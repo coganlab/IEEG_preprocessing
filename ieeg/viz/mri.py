@@ -456,6 +456,84 @@ def get_sub(inst: Signal | mne.Info | str) -> str:
 
 # TODO: figure out why elec positions are only correct in meters not mm
 
+# jim add code 2/1
+def plot_subj_sig_and_nonsig(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
+              sig_picks: list[str | int] = None, nonsig_picks: list[str | int] = None,
+              no_wm: bool = False, labels_every: int | None = 8, surface: str = 'pial',
+              hemi: str = 'both', fig: Brain = None, trans=None,
+              sig_color: tuple = (1, 1, 0), nonsig_color: tuple = (1, 1, 1),
+              size: float = 0.35, show: bool = True, background: str = 'white',
+              title: str = None, units: str = 'm', transparency: float = 0.5
+              ) -> Brain:
+    """Plots significant and non-significant electrodes on the subject's brain with different colors.
+
+    Additional Parameters
+    ---------------------
+    sig_picks : list[str | int], optional
+        The significant channels to plot.
+    nonsig_picks : list[str | int], optional
+        The non-significant channels to plot.
+    sig_color : tuple, optional
+        The color of significant electrodes.
+    nonsig_color : tuple, optional
+        The color of non-significant electrodes.
+    """
+    if isinstance(inst, Signal):
+        info = inst.info
+        sub = get_sub(info)
+    elif isinstance(inst, mne.Info):
+        info = inst
+        sub = get_sub(info)
+    elif isinstance(inst, str):
+        info = subject_to_info(inst, subj_dir)
+        sub = inst
+    else:
+        raise TypeError(
+            f"inst must be Signal, mne.Info, or str, not {type(inst)}")
+
+    if subj_dir is None:
+        subj_dir = get_sub_dir(subj_dir)
+    if trans is None:
+        trans = mne.transforms.Transform(fro='head', to='mri')
+    if fig is None:
+        fig = Brain(sub, subjects_dir=subj_dir, cortex='low_contrast',
+                    alpha=transparency, background=background, surf=surface,
+                    hemi=hemi, show=show, units=units)
+
+    # Set the title if provided
+    if title is not None:
+        mne.viz.set_3d_title(fig, title, size=40)
+    
+    # Plot non-significant electrodes
+    if nonsig_picks:
+        if isinstance(nonsig_picks[0], str):
+            nonsig_picks = mne.pick_channels(info.ch_names, nonsig_picks)
+        nonsig_info = mne.pick_info(info, nonsig_picks)
+        _plot_electrodes(fig, nonsig_info, hemi, nonsig_color, size, trans)
+
+    # Plot significant electrodes
+    if sig_picks:
+        if isinstance(sig_picks[0], str):
+            sig_picks = mne.pick_channels(info.ch_names, sig_picks)
+        sig_info = mne.pick_info(info, sig_picks)
+        _plot_electrodes(fig, sig_info, hemi, sig_color, size, trans)
+
+    return fig
+
+def _plot_electrodes(fig, info, hemi, color, size, trans):
+    montage = info.get_montage()
+    force2frame(montage, trans.from_str)
+    montage.apply_trans(trans)
+    pos = {k: v for k, v in montage.get_positions()['ch_pos'].items()}
+
+    left = {k: p for k, p in pos.items() if k.startswith('L')}
+    right = {k: p for k, p in pos.items() if k.startswith('R')}
+
+    if left and hemi != 'rh':
+        _add_electrodes(fig, info, 'lh', np.vstack(list(left.values())), color, size)
+    if right and hemi != 'lh':
+        _add_electrodes(fig, info, 'rh', np.vstack(list(right.values())), color, size)
+
 
 def plot_subj(inst: Signal | mne.Info | str, subj_dir: PathLike = None,
               picks: list[str | int] = None, no_wm: bool = False,
